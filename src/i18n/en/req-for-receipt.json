@@ -1,0 +1,8 @@
+{
+  "STUDENT_NOT_FOUND": "Student with ID {id} not found",
+  "SCHOOL_INACTIVE": "School with ID {id} is inactive, please contact the school administration.",
+  "SCHOOL_NO_ACTIVE_SUBSCRIPTION": "School with ID {id} does not have an active subscription, please contact the school administration.",
+  "DELIVERY_PERSON_NOT_FOUND": "Delivery person with ID {id} not found",
+  "NUMBER_OF_CAR_REQUIRED": "numberOfCar is required when howToReceive is CAR",
+  "RECEIPT_NOT_FOUND": "Receipt request with ID {id} not found"
+}

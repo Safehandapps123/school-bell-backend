@@ -1,0 +1,102 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  DOCKER_IMAGE_NAME: yossri65/elrayan-ecommerce-nestjs
+  DOCKER_BUILDKIT: 1
+  DOCKER_DRIVER: overlay2
+
+# Build stage
+build:
+  stage: build
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  before_script:
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+    - echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin
+  script:
+    - docker build --cache-from $DOCKER_IMAGE_NAME:latest --tag $DOCKER_IMAGE_NAME:$CI_COMMIT_SHA --tag $DOCKER_IMAGE_NAME:latest .
+    - docker push $DOCKER_IMAGE_NAME:$CI_COMMIT_SHA
+    - docker push $DOCKER_IMAGE_NAME:latest
+  only:
+    - main
+    - develop
+
+# Deploy to VPS via SSH using Docker Compose from specific directory
+deploy-to-vps:
+  stage: deploy
+  image: yossri65/deploy-tools@sha256:168868ddf1a72b0698d9d3e514c9b0279034046c0570a1fb7bd057c7833cb69f
+  before_script:
+    - echo "SERVER_USER=$SERVER_USER"
+    - echo "SERVER_HOST=$SERVER_HOST"
+    - echo "DOCKERHUB_USERNAME=$DOCKERHUB_USERNAME"
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - ssh-keyscan -H $SERVER_HOST >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+    - echo -e "Host *\n  StrictHostKeyChecking no\n  UserKnownHostsFile=/dev/null\n  LogLevel=ERROR" > ~/.ssh/config
+  script:
+  - |
+    ssh -T -i ~/.ssh/id_rsa $SERVER_USER@$SERVER_HOST /bin/sh << 'EOSSH'
+      set -e
+                  
+      # Navigate to your docker-compose directory
+      cd /root/apps/elrayan-ecommerce
+
+      # Save current image (for rollback)
+      OLD_IMAGE=`docker ps --filter "name=elrayan-ecommerce" --format "{{.Image}}"`
+
+      echo "🔹 Old image: $OLD_IMAGE"
+
+      # Stop and remove containers
+      docker-compose -f docker-compose.app.yml down
+
+      # Pull latest image
+      docker-compose -f docker-compose.app.yml pull
+
+      # Start containers with new image
+      docker-compose -f docker-compose.app.yml up -d
+
+      echo "🔎 Checking health..."
+      SUCCESS=false
+      for i in `seq 1 10`; do
+        STATUS=`curl -s -o /dev/null -w "%{http_code}" http://localhost:3800/api/v1 || echo "000"`
+        if [ "$STATUS" = "200" ]; then
+          SUCCESS=true
+          break
+        fi
+        echo "Waiting for app... (status: $STATUS)"
+        sleep 10
+      done
+
+      if [ "$SUCCESS" = true ]; then
+        echo "✅ New version is healthy"
+        docker image prune -af   # 🧹 Clean up old images
+      else
+        echo "❌ New version failed! Rolling back..."
+
+        # Stop containers
+        docker-compose -f docker-compose.app.yml down
+
+        # Run previous image
+        if [ -n "$OLD_IMAGE" ]; then
+          sed -i "s|image: .*|image: $OLD_IMAGE|g" docker-compose.app.yml
+          docker-compose -f docker-compose.app.yml up -d
+          echo "🔄 Rolled back to $OLD_IMAGE"
+        else
+          echo "⚠️ No old image found to rollback!"
+          exit 1
+        fi
+      fi
+    EOSSH
+
+
+  environment:
+    name: production
+    url: http://$SERVER_HOST:3000
+  only:
+    - main

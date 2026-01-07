@@ -1,0 +1,39 @@
+services:
+  app:
+    container_name: school-bell-app
+    image: yossri65/school-bell-app
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      target: ${BUILD_TARGET:-production}
+      args:
+        APP_ENV: production
+    networks:
+      - ${NETWORK_NAME}
+    environment:
+      - APP_ENV=production
+    env_file:
+      - .env
+    ports:
+      - '4500:${APP_PORT:-3000}'
+    depends_on:
+      - network-setup
+    volumes:
+      - logs-school-bell-data:/usr/src/app/logs
+    restart: unless-stopped
+
+  network-setup:  
+    image: alpine:latest
+    command: echo "Network setup complete"
+    networks:
+      - ${NETWORK_NAME}
+
+networks:
+  school-bell-network:
+    name: ${NETWORK_NAME}
+    driver: bridge
+
+
+volumes:
+  logs-school-bell-data:
+    driver: local

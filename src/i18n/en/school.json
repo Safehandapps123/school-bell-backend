@@ -1,0 +1,5 @@
+{
+  "SCHOOL_NOT_FOUND": "School with ID {id} not found",
+  "UNSPECIFIED_LOCATION": "Unspecified",
+  "OTHER": "Other"
+}
