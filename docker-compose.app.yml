@@ -5,7 +5,6 @@ services:
     build:
       context: .
       dockerfile: ./Dockerfile
-      target: ${BUILD_TARGET:-production}
       args:
         APP_ENV: production
     networks:

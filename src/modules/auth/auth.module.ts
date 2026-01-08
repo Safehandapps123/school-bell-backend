@@ -26,7 +26,7 @@ import { DeliveryPerson } from '../delivery-person/entities/delivery-person.enti
         global: true,
         secret: configService.get<string>('JWT.secret'),
         signOptions: {
-          expiresIn: configService.get<string>('JWT.expiresIn', '15m'),
+          expiresIn: configService.get('JWT.expiresIn', '15m'),
         },
       }),
       inject: [ConfigService],

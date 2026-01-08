@@ -1,11 +1,11 @@
 # Dependencies
-node_modules
+# node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
 # Build outputs
-dist
+# dist
 build
 .next
 
@@ -43,6 +43,11 @@ test-results
 # Logs
 logs
 *.log
+errors.json
+load_test_log.txt
+
+# Localization (will be copied separately if needed)
+i18n
 
 # Runtime data
 pids

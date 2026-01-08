@@ -1,51 +1,95 @@
-# ================================
-# 1. Base Stage
-# ================================
-FROM yossri65/my-node-base:latest AS base
+# syntax=docker/dockerfile:1.4
 
-RUN groupadd -r nodejs && useradd -r -g nodejs nodejs
-WORKDIR /usr/src/app
-RUN chown nodejs:nodejs /usr/src/app
+# ==================================
+# Stage 1: Install ALL dependencies
+# ==================================
+FROM node:20.18.1-alpine3.20 AS deps
 
-# ================================
-# 2. Dependencies (cached layer)
-# ================================
-FROM base AS dependencies
-COPY package*.json ./
-# Configure npm for better reliability
-RUN npm config set fetch-retries 5 && \
-    npm config set fetch-retry-mintimeout 20000 && \
-    npm config set fetch-retry-maxtimeout 120000 && \
-    npm ci --ignore-scripts
+RUN apk add --no-cache \
+    python3 make g++ \
+    cairo-dev jpeg-dev pango-dev giflib-dev pixman-dev
 
-# ================================
-# 3. Build Stage
-# ================================
-FROM dependencies AS build
-# Copy only source code (so cache for deps not broken unless package.json changes)
-COPY --chown=nodejs:nodejs . .
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --prefer-offline
+
+# ==================================
+# Stage 2: Build
+# ==================================
+FROM deps AS builder
+
+COPY . .
+
 RUN npm run build
 
-# ================================
-# 4. Production Stage
-# ================================
-FROM yossri65/my-node-base@sha256:3b3e18b602d33cfe42021bb7a787571faf447c3ea22304ec482a291dd66af64f AS production
-WORKDIR /usr/src/app
+# ==================================
+# Stage 3: Production deps ONLY
+# ==================================
+FROM node:20.18.1-alpine3.20 AS prod-deps
 
-# Copy only package.json + install prod deps (cached if no change)
-COPY package*.json ./
-# Configure npm for better reliability and use --omit=dev instead of deprecated --only=production
-RUN npm config set fetch-retries 5 && \
-    npm config set fetch-retry-mintimeout 20000 && \
-    npm config set fetch-retry-maxtimeout 120000 && \
-    npm ci --omit=dev --ignore-scripts
+RUN apk add --no-cache \
+    python3 make g++ \
+    cairo-dev jpeg-dev pango-dev giflib-dev pixman-dev
 
-# Copy compiled build
-COPY --from=build --chown=nodejs:nodejs /usr/src/app/dist ./dist
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+
+# ✅ Install production deps INSIDE Docker
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --omit=dev --ignore-scripts --prefer-offline && \
+    npm cache clean --force && \
+    # Force remove any remaining dev deps
+    rm -rf \
+        node_modules/typescript \
+        node_modules/prettier \
+        node_modules/webpack \
+        node_modules/@swc \
+        node_modules/@babel \
+        node_modules/@angular-devkit \
+        node_modules/@types \
+        node_modules/.cache \
+        /tmp/* && \
+    echo "✅ Production node_modules size:" && \
+    du -sh node_modules
+
+# ==================================
+# Stage 4: Final production image
+# ==================================
+FROM node:20.18.1-alpine3.20
+
+RUN apk add --no-cache \
+    cairo jpeg pango giflib pixman \
+    libc6-compat libstdc++ \
+    tini curl && \
+    rm -rf /var/cache/apk/*
+
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+WORKDIR /app
+
+# Create logs directory with correct permissions BEFORE switching to nodejs user
+RUN mkdir -p logs && chown -R nodejs:nodejs logs
+
+ENV NODE_ENV=production \
+    TZ=Africa/Cairo \
+    PORT=3000
+
+# ✅ Copy from STAGES, not from local!
+COPY --from=prod-deps --chown=nodejs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
+COPY --from=builder --chown=nodejs:nodejs /app/package.json ./package.json
+
+USER nodejs
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3800/api/v1', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
 
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "dist/main.js"]
