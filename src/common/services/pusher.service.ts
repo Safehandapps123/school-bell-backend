@@ -18,6 +18,7 @@ export class PusherService {
   async trigger(channel: string, event: string, data: any) {
     try {
       await this.pusher.trigger(channel, event, data);
+      console.log(`Pusher event triggered: channel=${channel}, event=${event}`);
     } catch (error) {
       console.error('Pusher trigger error:', error);
     }
