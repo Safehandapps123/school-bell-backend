@@ -216,6 +216,8 @@ export class ReqForReceiptService {
         toDate: endDate,
       });
     }
+    console.log(queryBuilder.getSql());
+    console.log(queryBuilder.getParameters());
 
     const result = await PaginationService.paginateQueryBuilder<ReqForReceipt>(
       queryBuilder,
@@ -342,47 +344,10 @@ export class ReqForReceiptService {
     if (user.role !== RolesEnum.SCHOOL) {
       // Fire Pusher event to school
       if (reqForReceipt.student?.school?.id) {
-        let message = '';
-        if (body.status === RequestStautsEnum.WATINGOUTSIDE) {
-          message =
-            result.reminderCount > 0
-              ? `تذكير ${result.reminderCount + 1}: ولي امر الطالب ${result.student.fullName} في انتظارك لاستلامه`
-              : `ولي امر الطالب ${result.student.fullName} في انتظارك لاستلامه`;
-        }
         await this.pusherService.trigger(
           `school-${reqForReceipt.student.school.id}`,
           'new-request',
-          {
-            ...result,
-            message: message ? message : null,
-          },
-        );
-      }
-    } else {
-      // Fire Pusher events to student, parent, and delivery person
-      const channels: string[] = [];
-      
-      // Get student user
-      if (result.student?.userId) {
-        channels.push(`school-${result.student.userId}`);
-      }
-      
-      // Get parent user
-      if (result.student?.parent?.userId) {
-        channels.push(`school-${result.student.parent.userId}`);
-      }
-      
-      // Get delivery person user
-      if (result.deliveryPerson?.user?.id) {
-        channels.push(`school-${result.deliveryPerson.user.id}`);
-      }
-
-      // Trigger events for all channels
-      if (channels.length > 0) {
-        await Promise.all(
-          channels.map((channel) =>
-            this.pusherService.trigger(channel, 'new-request', result),
-          ),
+          result,
         );
       }
     }
@@ -611,17 +576,15 @@ export class ReqForReceiptService {
     }
 
     const reqForReceiptAfterSave = await this.findOne(saved.id);
-    const message =
-      saved.reminderCount > 0
-        ? `تذكير ${saved.reminderCount}: ولي امر الطالب ${reqForReceiptAfterSave.student.fullName} في انتظارك لاستلامه`
-        : `ولي امر الطالب ${reqForReceiptAfterSave.student.fullName} في انتظارك لاستلامه`;
+    const message =`ولي امر الطالب ${reqForReceiptAfterSave.student.fullName} في انتظارك لاستلامه`;
+
 
     if (reqForReceiptAfterSave.student.school.userId) {
       await this.notificationService.sendNotification({
         notificationData: {
           title:
             saved.reminderCount > 0
-              ? `تذكير ${saved.reminderCount}: ولي الامر في انتظارك`
+              ? `تذكير ${saved.reminderCount + 1}: ولي الامر في انتظارك`
               : 'ولي الامر في انتظارك',
           message: message,
           navigationData: {
@@ -671,7 +634,6 @@ export class ReqForReceiptService {
         code: reqForReceipt.student?.code,
         class: reqForReceipt.student?.class,
         stage: reqForReceipt.student?.stage,
-        userId : reqForReceipt.student?.userId,
         school: {
           id: reqForReceipt.student?.school?.id,
           name: reqForReceipt.student?.school?.name,

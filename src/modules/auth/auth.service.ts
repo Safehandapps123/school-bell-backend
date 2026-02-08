@@ -338,7 +338,7 @@ export class AuthService {
     const updatedWhitelist = [
       jti,
       ...(userEntity?.whitelistedTokens || []),
-    ].slice(0, 10);
+    ].slice(0, 5);
 
     await this.userRepository.update(user.id, {
       whitelistedTokens: updatedWhitelist,
@@ -389,9 +389,9 @@ export class AuthService {
     // Add the new playerId to the beginning of the array
     user.playerIds.unshift(playerId);
 
-    // Ensure we only keep the 5 most recent player IDs
-    if (user.playerIds.length > 5) {
-      user.playerIds = user.playerIds.slice(0, 5);
+    // Ensure we only keep the 3 most recent player IDs
+    if (user.playerIds.length > 3) {
+      user.playerIds = user.playerIds.slice(0, 3);
     }
 
     // Save the updated user
